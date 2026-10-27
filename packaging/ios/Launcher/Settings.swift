@@ -254,7 +254,7 @@ private struct About: View {
             line("Horizon for iPhone", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
             line("Minecraft: Java Edition", version)
             line("Game files", GameFolder.hasGameFiles ? "Installed" : "Not installed")
-            Link(destination: URL(string: "https://github.com/heyskylo/horizon-ios")!) {
+            Link(destination: URL(string: "https://github.com/deinadmin/horizon-ios")!) {
                 Label("Source code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                     .font(Theme.sans(13, .semiBold)).foregroundStyle(Theme.accentText)
             }

@@ -66,9 +66,12 @@ mod hand;
 mod import_screen;
 mod initial_spawn;
 mod integrated;
+#[cfg(target_os = "ios")]
+mod ios_input;
 mod item_draw;
 mod item_particles;
 mod jukebox;
+mod keyboard;
 mod lan;
 mod lan_actions;
 mod lan_attributes;
@@ -4684,10 +4687,17 @@ impl Game<'_> {
             // so everywhere else warp after grabbing.
             #[cfg(target_os = "macos")]
             warp(window);
-            self.captured = window
-                .set_cursor_grab(CursorGrabMode::Locked)
-                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined))
-                .is_ok();
+            #[cfg(not(target_os = "ios"))]
+            {
+                self.captured = window
+                    .set_cursor_grab(CursorGrabMode::Locked)
+                    .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined))
+                    .is_ok();
+            }
+            #[cfg(target_os = "ios")]
+            {
+                self.captured = !self.touch_is_active();
+            }
             #[cfg(not(target_os = "macos"))]
             if self.captured && self.focused {
                 warp(window);
@@ -4714,6 +4724,8 @@ impl Game<'_> {
             self.captured = false;
         }
         window.set_cursor_visible(!self.captured);
+        #[cfg(target_os = "ios")]
+        horizon_ios_launcher::scene::lock_pointer(self.captured);
     }
     /// LevelLoadingScreen.onClose -> Gui.setScreen(null) -> grabMouse.
     fn capture_loaded_world(&mut self) {
@@ -4859,6 +4871,10 @@ impl Game<'_> {
         self.frame_graph
             .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
         self.draw_pad_cursor(&mut batch);
+        #[cfg(target_os = "ios")]
+        if !self.touch_is_active() && !self.captured {
+            self.draw_menu_pointer(&mut batch, self.cursor);
+        }
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
@@ -10861,6 +10877,8 @@ impl ApplicationHandler for Game<'_> {
                 return;
             }
         };
+        #[cfg(target_os = "ios")]
+        horizon_ios_launcher::scene::attach(window.as_ref());
         horizon_client::telemetry::note_display(&window);
         match self.new_renderer(window.clone()) {
             Ok(r) => {
@@ -11335,164 +11353,7 @@ impl ApplicationHandler for Game<'_> {
                     }
                 }
                 // ConfirmScreen.keyPressed: Escape answers no.
-                WindowEvent::KeyboardInput { event, .. } if self.server_packs.prompt.is_some() => {
-                    if event.state == ElementState::Pressed
-                        && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
-                    {
-                        self.answer_pack_prompt(false)?;
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.screen == Screen::Chat && self.title.is_none() =>
-                {
-                    if let PhysicalKey::Code(key) = event.physical_key {
-                        if event.state == ElementState::Pressed {
-                            self.keys.insert(key);
-                            self.chat_key(&event);
-                        } else {
-                            self.keys.remove(&key);
-                        }
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. } if self.sign_edit.is_some() => {
-                    self.sign_edit_key(&event)
-                }
-                WindowEvent::KeyboardInput { event, .. } if self.book.is_some() => {
-                    self.book_key(&event)
-                }
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.screen == Screen::Creative
-                        && self.creative_screen.tab().search
-                        && event.state == ElementState::Pressed
-                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
-                {
-                    if let PhysicalKey::Code(key) = event.physical_key
-                        && self.search_tab_hotbar_key(key)
-                    {
-                        // The hovered slot took the key (`ignoreTextInput`).
-                    } else if let Some(shortcut) = self.edit_shortcut(&event) {
-                        self.creative_search_shortcut(shortcut);
-                    } else {
-                        let backspace = event.physical_key == PhysicalKey::Code(KeyCode::Backspace);
-                        self.creative_search_edit(event.text.as_deref(), backspace);
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.recipe_search_focused()
-                        && event.state == ElementState::Pressed
-                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
-                {
-                    // The recipe book's search box takes every key but Escape.
-                    self.recipe_key(&event);
-                }
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.station_typing()
-                        && event.state == ElementState::Pressed
-                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
-                {
-                    // The anvil rename box takes every key but Escape (AnvilScreen.keyPressed).
-                    if let Some(shortcut) = self.edit_shortcut(&event) {
-                        self.station_shortcut(shortcut);
-                    } else {
-                        let backspace = event.physical_key == PhysicalKey::Code(KeyCode::Backspace);
-                        self.station_text(event.text.as_deref(), backspace);
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.screen == Screen::WorldOptions
-                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
-                {
-                    self.world_options_key(&event)
-                }
-                WindowEvent::KeyboardInput { event, .. } if self.screen == Screen::Win => {
-                    self.win_key(&event)?
-                }
-                WindowEvent::KeyboardInput { event, .. } if self.screen == Screen::CommandBlock => {
-                    self.command_block_key(&event)
-                }
-                // Options consumes presses; releases still reach the bound
-                // gameplay mapping below, including sneak/sprint toggles.
-                WindowEvent::KeyboardInput { event, .. }
-                    if self.screen == Screen::Options && event.state == ElementState::Pressed =>
-                {
-                    if let Some(shortcut) = self.edit_shortcut(&event)
-                        && self.options_shortcut(shortcut)
-                    {
-                        return Ok(());
-                    }
-                    if let PhysicalKey::Code(key) = event.physical_key {
-                        self.options_key(key, event.text.as_deref())?;
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. } if self.title.is_some() => {
-                    if event.state == ElementState::Pressed {
-                        if let Some(shortcut) = self.edit_shortcut(&event) {
-                            self.title_shortcut(shortcut);
-                            return Ok(());
-                        }
-                        match event.physical_key {
-                            PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) => {
-                                if let Some(t) = self.title.as_mut() {
-                                    t.confirm_edit();
-                                }
-                            }
-                            PhysicalKey::Code(
-                                key @ (KeyCode::Backspace
-                                | KeyCode::Delete
-                                | KeyCode::ArrowLeft
-                                | KeyCode::ArrowRight
-                                | KeyCode::Home
-                                | KeyCode::End),
-                            ) if self.title.as_mut().is_some_and(|t| t.has_caret_field()) => {
-                                let (ctrl, shift) =
-                                    (self.has_control_down(), self.has_shift_down());
-                                if let Some(t) = self.title.as_mut() {
-                                    t.field_key(key, ctrl, shift);
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Backspace) => self.title_edit(None, true),
-                            PhysicalKey::Code(KeyCode::Tab) => {
-                                if let Some(t) = self.title.as_mut() {
-                                    t.tab();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Escape) => {
-                                if let Some(t) = self.title.as_mut() {
-                                    t.escape();
-                                }
-                                self.save_title_options();
-                            }
-                            _ => self.title_edit(event.text.as_deref(), false),
-                        }
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. } => {
-                    let PhysicalKey::Code(key) = event.physical_key else {
-                        return Ok(());
-                    };
-                    self.extras_key(key, event.state == ElementState::Pressed, event.repeat);
-                    // key.smoothCamera toggles the cinematic camera.
-                    if self.screen == Screen::Playing
-                        && event.state == ElementState::Pressed
-                        && !event.repeat
-                        && horizon_client::keybinds::key_name(key)
-                            .is_some_and(|n| self.settings.keys.get("key.smoothCamera") == n)
-                    {
-                        self.smooth_camera = !self.smooth_camera;
-                    }
-                    // Key binds: act as the default key of the bound mapping.
-                    let key = match self.settings.keys.translate(key) {
-                        Some(Ok(k)) => k,
-                        Some(Err(button)) => {
-                            if self.screen == Screen::Playing && !event.repeat {
-                                self.play_mouse(button, event.state == ElementState::Pressed)?;
-                            }
-                            return Ok(());
-                        }
-                        None => return Ok(()),
-                    };
-                    self.mapped_key(key, event.state == ElementState::Pressed, event.repeat)?;
-                }
+                WindowEvent::KeyboardInput { event, .. } => self.keyboard_event(event.into())?,
                 WindowEvent::RedrawRequested => {
                     self.observe_fullscreen();
                     let now = Instant::now();
@@ -11729,6 +11590,8 @@ impl ApplicationHandler for Game<'_> {
         }
         self.poll_pads(event_loop);
         self.sync_system_keyboard();
+        #[cfg(target_os = "ios")]
+        self.ios_input_frame(event_loop);
         self.touch_frame(event_loop);
         if self.options.frames.is_some() && self.started.elapsed() > self.options.timeout {
             self.error = Some("frame-limited run timed out".into());
@@ -13083,6 +12946,8 @@ impl Loading {
                 return;
             }
         };
+        #[cfg(target_os = "ios")]
+        horizon_ios_launcher::scene::attach(window.as_ref());
         horizon_client::telemetry::note_display(&window);
         let offscreen = self.options.as_ref().is_some_and(|o| o.offscreen);
         match loading_renderer(
@@ -13154,6 +13019,8 @@ impl Loading {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "ios")]
+        self.ios_menu_input(event_loop);
         if let Err(error) = if self.importing() {
             self.poll_import()
         } else {

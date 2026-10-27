@@ -42,14 +42,14 @@ private func presentDownload(attempts: Int) {
     // A locked phone drops the connection: keep the screen on while the files come in.
     UIApplication.shared.isIdleTimerDisabled = true
     root.present(host, animated: false) {
-        turn(host.view.window?.windowScene, to: .portrait)
+        turn(host.view.window?.windowScene, to: launcherOrientations)
     }
 }
 
 /// The download screen stands upright, whatever the game under it does.
 private final class DownloadHostingController: UIHostingController<AnyView> {
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .portrait }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { launcherOrientations }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { launcherPresentationOrientation() }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }
 

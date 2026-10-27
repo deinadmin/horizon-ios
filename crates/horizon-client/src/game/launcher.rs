@@ -311,17 +311,30 @@ impl Loading {
             let command = request.line.split_whitespace().next().unwrap_or_default();
             match command {
                 "launcher-start" => {
+                    if let Some(options) = &mut self.options
+                        && let Some(root) = horizon_client::import::resources_root(
+                            &options.resources,
+                            Some(&horizon_client::import::home()),
+                        )
+                    {
+                        self.vanilla_root = root.clone();
+                        options.resources = root;
+                    }
                     horizon_ios_launcher::start();
                     request.answer(r#"{"ok":true}"#);
                 }
                 "launcher-state" => {
-                    let state = if horizon_ios_launcher::waiting() {
+                    let mut state = if horizon_ios_launcher::waiting() {
                         json!({ "phase": "waiting" })
                     } else if self.importing() {
                         json!({ "phase": "needs_files", "reason": self.import_reason() })
                     } else {
                         json!({ "phase": "loading", "progress": self.progress.fraction() })
                     };
+                    state["version"] = json!(horizon_core::VANILLA_VERSION);
+                    state["download_url"] = json!(horizon_client::import::download::url(
+                        horizon_core::VANILLA_VERSION
+                    ));
                     request.answer(&state.to_string());
                 }
                 "download-state" => request.answer(&self.download_state().to_string()),

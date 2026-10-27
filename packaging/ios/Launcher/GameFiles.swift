@@ -37,6 +37,7 @@ final class GameFilesDownload: NSObject, ObservableObject {
     }
 
     func start() {
+        guard !busy else { return }
         let text = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text), let scheme = url.scheme?.lowercased(),
               scheme == "https" || scheme == "http", url.host != nil
@@ -51,6 +52,16 @@ final class GameFilesDownload: NSObject, ObservableObject {
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        begin(request)
+    }
+
+    /// The built-in download never reuses a token saved for a player's custom server.
+    func startRequiredFiles(from link: String) {
+        guard !busy, let url = URL(string: link), url.scheme == "https", url.host != nil else { return }
+        begin(URLRequest(url: url))
+    }
+
+    private func begin(_ request: URLRequest) {
         // A prepared tree is ~600 MB: ask for the time to finish if the player looks away.
         background = UIApplication.shared.beginBackgroundTask(withName: "Horizon game files") { [weak self] in
             let download = self
@@ -90,6 +101,7 @@ final class GameFilesDownload: NSObject, ObservableObject {
                 state = .failed(error)
                 Haptics.failed()
             } else {
+                try? FileManager.default.removeItem(at: file)
                 state = .done(Self.describe(answer))
                 Haptics.done()
             }
@@ -102,7 +114,7 @@ final class GameFilesDownload: NSObject, ObservableObject {
         switch answer["kind"] as? String {
         case "resources":
             return GameFolder.hasGameFiles
-                ? "Game files installed. If the game was already running, close Horizon and open it again to use them."
+                ? "Game files ready. Return to the launcher and press Play."
                 : "Game files installed."
         case "world": return "World \(name) added."
         case "resource_pack": return "Resource pack \(name) added."
@@ -265,5 +277,63 @@ struct GameFilesCard: View {
 
     private static func size(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+
+/// The Play action offers the download without starting the resource loader.
+struct RequiredGameFilesView: View {
+    @ObservedObject var download: GameFilesDownload
+    let url: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Game files")
+                    .font(Theme.pixel(28, .bold))
+                switch download.state {
+                case .idle:
+                    Text("Download the game files before playing. When they’re ready, return to the launcher and press Play.")
+                    downloadButton
+                case let .downloading(received, total):
+                    Text("Downloading game files…")
+                    if total > 0 {
+                        ProgressView(value: Double(received), total: Double(total))
+                    } else {
+                        ProgressView()
+                    }
+                    Text(ByteCountFormatter.string(fromByteCount: received, countStyle: .file))
+                        .font(Theme.mono(14))
+                    Button("Cancel download", role: .cancel) { download.cancel() }
+                case .installing:
+                    ProgressView("Installing game files…")
+                case .done:
+                    Label("Game files ready", systemImage: "checkmark.circle.fill")
+                    Text("Press Play in the launcher when you’re ready.")
+                    PrimaryButton(title: "Back to launcher", icon: "checkmark") { dismiss() }
+                case let .failed(message):
+                    Text(message).foregroundStyle(Theme.danger)
+                    downloadButton
+                }
+                Spacer()
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(Theme.text)
+            .background(Theme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(download.busy ? "Back" : "Not now") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var downloadButton: some View {
+        PrimaryButton(title: "Download game files", icon: "arrow.down") {
+            download.startRequiredFiles(from: url)
+        }
+        .disabled(url.isEmpty)
     }
 }

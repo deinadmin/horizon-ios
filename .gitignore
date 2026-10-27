@@ -31,3 +31,8 @@
 /.horizon-cache/
 /crash-reports/
 /debug/
+/cert/
+
+# Generated local iOS projects and build products.
+/packaging/ios/HorizonIOS.xcodeproj/
+/packaging/ios/build/

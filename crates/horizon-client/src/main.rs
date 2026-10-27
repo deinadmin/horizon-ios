@@ -31,6 +31,8 @@ fn into_app_sandbox() -> Result<std::path::PathBuf, String> {
 
 fn main() {
     #[cfg(target_os = "ios")]
+    horizon_ios_launcher::scene::register();
+    #[cfg(target_os = "ios")]
     let documents = match into_app_sandbox() {
         Ok(documents) => documents,
         Err(error) => {

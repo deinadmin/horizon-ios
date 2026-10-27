@@ -53,7 +53,10 @@ impl Loading {
         // Download them first; the Wi-Fi and cable doors open only if that fails. Once a run: files that
         // downloaded and still don't load would otherwise be downloaded again and again.
         let url = horizon_client::import::download::url(horizon_core::VANILLA_VERSION);
-        let download = if DOWNLOADED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let download = if horizon_ios_launcher::bundled() {
+            // The launcher offers a download; missing or damaged files never grant consent.
+            None
+        } else if DOWNLOADED.swap(true, std::sync::atomic::Ordering::Relaxed) {
             log::warn!(
                 "Horizon: the downloaded game files did not load ({reason}); not downloading again"
             );
@@ -236,6 +239,7 @@ impl Loading {
         let mut options = self.options.take().ok_or("loading already finished")?;
         if let Some(root) = horizon_client::import::resources_root(&options.resources, Some(&home))
         {
+            self.vanilla_root = root.clone();
             options.resources = root;
         }
         let (receiver, handle) = startup_menu::spawn_loader(

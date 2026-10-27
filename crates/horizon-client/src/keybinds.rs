@@ -199,6 +199,19 @@ const KEYS: &[(&str, KeyCode)] = &[
     ("key.keyboard.right.alt", KeyCode::AltRight),
     ("key.keyboard.right.win", KeyCode::SuperRight),
 ];
+/// iOS hardware keyboards report USB HID usages. On a German keyboard the
+/// key left of 1 is ^/°. Apple ISO keyboards can report the non-US backslash
+/// usage instead of grave accent; accept both as Escape alternatives.
+pub fn ios_key_code(usage: i32) -> Option<KeyCode> {
+    if matches!(usage, 53 | 100) {
+        return Some(KeyCode::Escape);
+    }
+    crate::key_names::KEYBOARD
+        .iter()
+        .find(|(code, _)| *code == usage)
+        .and_then(|(_, name)| key_code(name))
+}
+
 pub fn key_code(name: &str) -> Option<KeyCode> {
     KEYS.iter().find(|(n, _)| *n == name).map(|(_, k)| *k)
 }
@@ -442,5 +455,29 @@ mod tests {
     fn display_names() {
         assert_eq!(display_name("key.keyboard.w").plain(), "W");
         assert_eq!(display_name("key.keyboard.slash").plain(), "/");
+    }
+}
+
+#[cfg(test)]
+mod ios_keyboard_tests {
+    use super::*;
+
+    #[test]
+    fn caret_key_and_escape_have_the_same_action() {
+        assert_eq!(ios_key_code(53), Some(KeyCode::Escape));
+        assert_eq!(ios_key_code(100), Some(KeyCode::Escape));
+        assert_eq!(ios_key_code(41), Some(KeyCode::Escape));
+    }
+
+    #[test]
+    fn other_hardware_keys_keep_their_original_mapping() {
+        assert_eq!(ios_key_code(26), Some(KeyCode::KeyW));
+        assert_eq!(ios_key_code(225), Some(KeyCode::ShiftLeft));
+        assert_eq!(ios_key_code(-1), None);
+        // Desktop bindings remain unchanged.
+        assert_eq!(
+            key_code("key.keyboard.grave.accent"),
+            Some(KeyCode::Backquote)
+        );
     }
 }

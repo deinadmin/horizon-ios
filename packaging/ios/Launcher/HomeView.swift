@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The launcher, upright: Play (the game, its worlds and the player), Servers, Packs, Gallery and Settings
+/// The adaptive launcher: Play (the game, its worlds and the player), Servers, Packs, Gallery and Settings
 /// (What's New is in Settings). Everything it knows about the game it asks the game under it (GameLink.swift,
 /// Bridge.swift).
 struct HomeView: View {
@@ -18,8 +18,18 @@ struct HomeView: View {
     @State private var nameRejected = false
     @State private var tab = Tab.play
 
-    enum Tab: Hashable {
-        case play, servers, packs, gallery, settings
+    enum Tab: String, CaseIterable, Hashable {
+        case play = "Play", servers = "Servers", packs = "Packs", gallery = "Gallery", settings = "Settings"
+
+        var icon: String {
+            switch self {
+            case .play: return "play.fill"
+            case .servers: return "globe"
+            case .packs: return "square.stack.3d.up.fill"
+            case .gallery: return "photo.on.rectangle"
+            case .settings: return "slider.horizontal.3"
+            }
+        }
     }
 
     // Spelled out: a private property makes the memberwise one private, and Present.swift builds this view.
@@ -35,25 +45,34 @@ struct HomeView: View {
     }
 
     var body: some View {
-        TabView(selection: $tab) {
-            page(refresh: { await link.reload() }) { PlayPage(link: link, device: device, download: download, player: player, head: head,
-                            account: account, editName: editName) }
-                .tabItem { Label("Play", systemImage: "play.fill") }
-                .tag(Tab.play)
-            page(refresh: { await link.reloadServers() }) { ServersPage(link: link) }
-                .tabItem { Label("Servers", systemImage: "globe") }
-                .tag(Tab.servers)
-            page { PacksPage(link: link) }
-                .tabItem { Label("Packs", systemImage: "square.stack.3d.up.fill") }
-                .tag(Tab.packs)
-            page { GalleryPage() }
-                .tabItem { Label("Gallery", systemImage: "photo.on.rectangle") }
-                .tag(Tab.gallery)
-            page { SettingsPage(link: link, download: download) }
-                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-                .tag(Tab.settings)
+        GeometryReader { geometry in
+            if UIDevice.current.userInterfaceIdiom == .pad && geometry.size.width >= 700 {
+                HStack(spacing: 0) {
+                    sidebar
+                    Rectangle().fill(Theme.border).frame(width: 1)
+                    selectedPage(wide: geometry.size.width >= 1050)
+                }
+            } else {
+                TabView(selection: $tab) {
+                    ForEach(Tab.allCases, id: \.self) { item in
+                        tabPage(item, wide: false)
+                            .tabItem { Label(item.rawValue, systemImage: item.icon) }
+                            .tag(item)
+                    }
+                }
+            }
         }
         .tint(Theme.accentText)
+        .sheet(isPresented: $link.showDownload) {
+            RequiredGameFilesView(download: download, url: link.downloadURL)
+                .preferredColorScheme(.dark)
+        }
+        .onReceive(download.$state) { state in
+            switch state {
+            case .downloading, .installing: link.preparingFiles = true
+            default: link.preparingFiles = false
+            }
+        }
         .onChange(of: tab) { _ in Haptics.tap() }
         // The offline name the game plays with.
         .alert("Player name", isPresented: $editingName) {
@@ -90,16 +109,80 @@ struct HomeView: View {
         }
     }
 
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                HorizonMark()
+                Text("HORIZON").font(Theme.pixel(25, .bold)).foregroundStyle(Theme.text)
+            }
+            .padding(.vertical, 24)
+            ForEach(Tab.allCases, id: \.self) { item in
+                Button { tab = item } label: {
+                    Label(item.rawValue, systemImage: item.icon)
+                        .font(Theme.sans(16, .semiBold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .foregroundStyle(tab == item ? Theme.text : Theme.textMuted)
+                        .background(tab == item ? Theme.accent.opacity(0.3) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(tab == item ? .isSelected : [])
+            }
+            Spacer()
+            Button(action: editName) {
+                HStack(spacing: 12) {
+                    Avatar(name: shownName, face: head.face, size: 40)
+                    Text(shownName ?? "Player name").font(Theme.sans(14, .semiBold))
+                        .foregroundStyle(Theme.text).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 18)
+        .frame(width: 220)
+        .background(Theme.surfaceSunken.ignoresSafeArea())
+    }
+
+    private func selectedPage(wide: Bool) -> some View {
+        tabPage(tab, wide: wide, sidebar: true)
+    }
+
+    @ViewBuilder
+    private func tabPage(_ item: Tab, wide: Bool, sidebar: Bool = false) -> some View {
+        switch item {
+        case .play:
+            page(maxWidth: sidebar ? 1200 : 520, header: !sidebar, refresh: { await link.reload() }) {
+                PlayPage(link: link, device: device, player: player, head: head,
+                         account: account, editName: editName, wide: wide)
+            }
+        case .servers:
+            page(maxWidth: sidebar ? 850 : 520, header: !sidebar, refresh: { await link.reloadServers() }) {
+                ServersPage(link: link)
+            }
+        case .packs:
+            page(maxWidth: sidebar ? 850 : 520, header: !sidebar) { PacksPage(link: link) }
+        case .gallery:
+            page(maxWidth: sidebar ? 1200 : 520, header: !sidebar) { GalleryPage() }
+        case .settings:
+            page(maxWidth: sidebar ? 850 : 520, header: !sidebar) { SettingsPage(link: link, download: download) }
+        }
+    }
+
     /// One tab's page: the header bar over a scrolling column, on the launcher's background.
-    private func page<Content: View>(refresh: (() async -> Void)? = nil,
+    private func page<Content: View>(maxWidth: CGFloat = 520, header: Bool = true, refresh: (() async -> Void)? = nil,
                                      @ViewBuilder _ content: () -> Content) -> some View {
         ScrollView {
-            content().pageColumn()
+            content().pageColumn(maxWidth: maxWidth)
         }
         .refreshable { await refresh?() }
         .safeAreaInset(edge: .top, spacing: 0) {
-            Header(name: shownName, face: head.face, editName: editName)
-                .frame(maxWidth: 520).frame(maxWidth: .infinity).background(Theme.background)
+            if header {
+                Header(name: shownName, face: head.face, editName: editName)
+                    .frame(maxWidth: 520).frame(maxWidth: .infinity).background(Theme.background)
+            }
         }
         .background(Theme.background.ignoresSafeArea())
     }
@@ -181,33 +264,43 @@ struct Avatar: View {
 private struct PlayPage: View {
     @ObservedObject var link: GameLink
     @ObservedObject var device: DeviceStatus
-    @ObservedObject var download: GameFilesDownload
     @ObservedObject var player: PlayerName
     @ObservedObject var head: SkinHead
     @ObservedObject var account: MicrosoftAccount
     let editName: () -> Void
+    var wide = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            GameCard(link: link, device: device)
-            if needsFiles {
-                GameFilesCard(download: download, missing: true)
+        VStack(alignment: .leading, spacing: 20) {
+            if wide {
+                HStack(alignment: .top, spacing: 24) {
+                    gameAndWorlds.frame(maxWidth: .infinity)
+                    playerCards.frame(width: 280)
+                }
+            } else {
+                gameAndWorlds
+                playerCards
             }
-            if let last = link.worlds.first {
-                ContinueCard(world: last, link: link)
-            }
-            WorldsSection(link: link)
-            AccountCard(account: account)
-            PlayerCard(name: player.name, face: head.face, edit: editName)
         }
         .animation(.easeInOut(duration: 0.25), value: link.phase)
         .animation(.easeInOut(duration: 0.25), value: link.worlds)
     }
 
-    /// The game said it has nothing to load, or, before it starts, there are no game files to start it with.
-    private var needsFiles: Bool {
-        if case .needsFiles = link.phase { return true }
-        return link.phase == .waiting && !GameFolder.hasGameFiles
+    private var gameAndWorlds: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GameCard(link: link, device: device)
+            if let last = link.worlds.first {
+                ContinueCard(world: last, link: link)
+            }
+            WorldsSection(link: link)
+        }
+    }
+
+    private var playerCards: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            AccountCard(account: account)
+            PlayerCard(name: player.name, face: head.face, edit: editName)
+        }
     }
 }
 
@@ -320,7 +413,7 @@ private struct PlayButton: View {
                 .animation(.easeOut(duration: 0.3), value: fill)
             }
             .buttonStyle(PressStyle())
-            .disabled(missing || link.launching != nil)
+            .disabled(link.launching != nil)
             if link.launching != nil {
                 Button("Cancel") { link.cancelLaunch() }
                     .font(Theme.sans(12, .semiBold)).foregroundStyle(Theme.textMuted)

@@ -11,7 +11,9 @@ enum GameFolder {
 
     /// Whether imported game files are in place (`import::resources_root`'s second stop).
     static var hasGameFiles: Bool {
-        FileManager.default.fileExists(atPath: resources.appendingPathComponent("horizon-resources.json").path)
+        let roots = [Bundle.main.bundleURL.appendingPathComponent("resources"), resources,
+                     documents.appendingPathComponent(".local/horizon-client/26.3")]
+        return roots.contains { FileManager.default.fileExists(atPath: $0.appendingPathComponent("horizon-resources.json").path) }
     }
 }
 
@@ -89,6 +91,9 @@ final class GameLink: ObservableObject {
     @Published private(set) var launching: String?
     /// The last thing that went wrong, for an alert.
     @Published var problem: String?
+    @Published var showDownload = false
+    @Published var preparingFiles = false
+    @Published private(set) var downloadURL = ""
 
     /// Uncover the game (Present.swift dismisses the launcher).
     var uncover: () -> Void = {}
@@ -119,6 +124,8 @@ final class GameLink: ObservableObject {
         case "world": phase = .world
         default: phase = .unknown
         }
+        if let url = state["download_url"] as? String { downloadURL = url }
+        if case .needsFiles = phase { cancelLaunch() }
         if let version = state["version"] as? String {
             self.version = version
         }
@@ -158,16 +165,17 @@ final class GameLink: ObservableObject {
 
     /// Play: start the game and go to its title screen, or, with a world, into it.
     func play(_ world: World? = nil) async {
+        guard await requireFiles() else { return }
         Haptics.launch()
         guard let world else {
-            await start()
-            uncover()
+            await go("Starting game") { ["ok": true] }
             return
         }
         await go("Opening \(world.name)") { await Bridge.world("open", folder: world.folder) }
     }
 
     func create(name: String, seed: String, creative: Bool) async {
+        guard await requireFiles() else { return }
         Haptics.launch()
         var line = "world-create"
         let seed = seed.trimmingCharacters(in: .whitespaces)
@@ -184,9 +192,22 @@ final class GameLink: ObservableObject {
     }
 
     func join(_ address: String) async {
+        guard await requireFiles() else { return }
         Haptics.launch()
         let address = address.trimmingCharacters(in: .whitespaces)
         await go("Joining \(address)") { await Bridge.send("connect \(address)") }
+    }
+
+    /// Downloads never imply Play. The player returns to the launcher after installation.
+    private func requireFiles() async -> Bool {
+        await refresh()
+        let failed: Bool
+        if case .needsFiles = phase { failed = true } else { failed = false }
+        guard !preparingFiles, GameFolder.hasGameFiles, !failed else {
+            showDownload = true
+            return false
+        }
+        return true
     }
 
     /// Let the game load, if it is still waiting to be started.

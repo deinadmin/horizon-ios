@@ -6,9 +6,9 @@
   assembled by hand in .github/workflows/ios.yml (rustc emits an executable, and Xcode is never asked to), so
   nothing substitutes for Xcode and the versions are written here. Keep them beside project.yml's.
 
-  There is no principal class, no nib and no storyboard, on purpose: winit 0.30's iOS backend passes its own
-  `UIApplicationDelegate` class to `UIApplicationMain`, and a delegate named here would replace the one the
-  game's window comes from.
+  winit owns UIApplicationMain and observes application notifications. HorizonSceneDelegate bridges
+  the scene lifecycle required by iOS 27 to those notifications and attaches the winit window to its
+  UIWindowScene. The delegate is registered by horizon-ios-launcher before UIApplicationMain.
 
   UIFileSharingEnabled is the decided way assets arrive, prepared off-device and copied in by hand. It puts the
   game's Documents folder (saves, `options.txt`, `.horizon-cache`) in the Files app on the phone, so the copy is
@@ -65,6 +65,25 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Horizon finds worlds opened to LAN, and takes game files from your computer on this network.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Horizon</string>
+					<key>UISceneDelegateClassName</key>
+					<string>HorizonSceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIDeviceFamily</key>
@@ -81,6 +100,13 @@
 	<true/>
 	<!-- Portrait is for the launcher (packaging/ios/Launcher), which stands upright over the game; the game's
 	     own view controller (winit, ValidOrientations::Landscape) keeps the game sideways. -->
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

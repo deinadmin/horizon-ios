@@ -1,11 +1,12 @@
 //! The interactive title before world resources exist. Uses only the menu
 //! atlas/panorama; transfers the actual screen and queued entry to Game.
+use super::keyboard::KeyEvent;
 use super::*;
 use horizon_client::{
     clipboard::{self, AppendSelection, SystemClipboard},
     options_ui::{Event, OptionsUi, Page},
 };
-use winit::{event::KeyEvent, keyboard::ModifiersState};
+use winit::keyboard::ModifiersState;
 
 #[derive(Default)]
 pub(super) struct StartupMenu {
@@ -20,6 +21,8 @@ pub(super) struct StartupMenu {
     modifiers: ModifiersState,
     physical_keys: HashSet<KeyCode>,
     dragging: bool,
+    #[cfg(target_os = "ios")]
+    hardware: bool,
     clipboard: SystemClipboard,
     selection: AppendSelection,
     pub pending: Option<PendingWorldEntry>,
@@ -220,7 +223,17 @@ pub(super) fn spawn_loader(
         .spawn(move || {
             // iPhone and iPad: nothing loads until the player starts the game from the launcher, whose
             // Settings and Packs may have changed options.txt meanwhile (its resource packs above all).
-            let settings = if horizon_ios_launcher::wait_for_start() {
+            let waited = horizon_ios_launcher::wait_for_start();
+            let vanilla_root = if waited {
+                horizon_client::import::resources_root(
+                    &vanilla_root,
+                    Some(&horizon_client::import::home()),
+                )
+                .unwrap_or(vanilla_root)
+            } else {
+                vanilla_root
+            };
+            let settings = if waited {
                 Settings::load(
                     &std::env::current_dir()
                         .unwrap_or_default()
@@ -458,6 +471,40 @@ impl Loading {
             }
         }
         match event {
+            WindowEvent::Touch(touch) => {
+                #[cfg(target_os = "ios")]
+                {
+                    self.menu.hardware = false;
+                    horizon_ios_launcher::input::discard();
+                    horizon_ios_launcher::scene::lock_pointer(false);
+                }
+                self.menu_event(
+                    event_loop,
+                    WindowEvent::CursorMoved {
+                        device_id: winit::event::DeviceId::dummy(),
+                        position: touch.location,
+                    },
+                )?;
+                if matches!(
+                    touch.phase,
+                    winit::event::TouchPhase::Started
+                        | winit::event::TouchPhase::Ended
+                        | winit::event::TouchPhase::Cancelled
+                ) {
+                    self.menu_event(
+                        event_loop,
+                        WindowEvent::MouseInput {
+                            device_id: winit::event::DeviceId::dummy(),
+                            button: MouseButton::Left,
+                            state: if touch.phase == winit::event::TouchPhase::Started {
+                                ElementState::Pressed
+                            } else {
+                                ElementState::Released
+                            },
+                        },
+                    )?;
+                }
+            }
             WindowEvent::CloseRequested => {
                 self.save_menu_settings();
                 event_loop.exit();
@@ -583,35 +630,125 @@ impl Loading {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                if event.physical_key == PhysicalKey::Code(KeyCode::F11) {
-                    self.settings.fullscreen = !self.settings.fullscreen;
-                    self.apply_menu_settings();
-                    self.save_menu_settings();
-                } else if self.menu.options_open {
-                    let shortcut = self.menu.shortcut(&event);
-                    let atlas = &self.gui.as_ref().unwrap().atlas;
-                    let handled = shortcut.is_some_and(|s| {
-                        self.menu
-                            .options
-                            .shortcut(atlas, s, &mut self.menu.clipboard)
-                    });
-                    if !handled && let PhysicalKey::Code(key) = event.physical_key {
-                        let events = self.menu.options.key(
-                            &mut self.settings,
-                            atlas,
-                            key,
-                            event.text.as_deref(),
-                        );
-                        self.menu_option_events(events);
-                    }
-                } else {
-                    self.menu.title_key(&event);
-                    self.save_menu_address();
-                }
+                self.menu_key(event.into())
             }
             _ => {}
         }
         Ok(())
+    }
+
+    fn menu_key(&mut self, event: KeyEvent) {
+        if event.physical_key == PhysicalKey::Code(KeyCode::F11) {
+            self.settings.fullscreen = !self.settings.fullscreen;
+            self.apply_menu_settings();
+            self.save_menu_settings();
+        } else if self.menu.options_open {
+            let shortcut = self.menu.shortcut(&event);
+            let atlas = &self.gui.as_ref().unwrap().atlas;
+            let handled = shortcut.is_some_and(|s| {
+                self.menu
+                    .options
+                    .shortcut(atlas, s, &mut self.menu.clipboard)
+            });
+            if !handled && let PhysicalKey::Code(key) = event.physical_key {
+                let events =
+                    self.menu
+                        .options
+                        .key(&mut self.settings, atlas, key, event.text.as_deref());
+                self.menu_option_events(events);
+            }
+        } else {
+            self.menu.title_key(&event);
+            self.save_menu_address();
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn ios_menu_input(&mut self, event_loop: &ActiveEventLoop) {
+        use horizon_ios_launcher::{
+            input::{self, Event},
+            scene,
+        };
+        use winit::event::{DeviceId, MouseScrollDelta, TouchPhase};
+        let events = input::take();
+        if !scene::game_active() || self.gui.is_none() {
+            self.menu.hardware = false;
+            scene::lock_pointer(false);
+            return;
+        }
+        for event in events {
+            let window_event = match event {
+                Event::Reset => {
+                    self.menu.hardware = false;
+                    Some(WindowEvent::Focused(false))
+                }
+                Event::Key(code, down) => {
+                    if down {
+                        self.menu.hardware = true;
+                    }
+                    if let Some(key) = horizon_client::keybinds::ios_key_code(code) {
+                        if down {
+                            self.menu.physical_keys.insert(key);
+                            self.menu_key(KeyEvent {
+                                physical_key: PhysicalKey::Code(key),
+                                logical_key: winit::keyboard::Key::Unidentified(
+                                    winit::keyboard::NativeKey::Unidentified,
+                                ),
+                                text: None,
+                                state: ElementState::Pressed,
+                                repeat: false,
+                            });
+                        } else {
+                            self.menu.physical_keys.remove(&key);
+                        }
+                    }
+                    None
+                }
+                Event::Motion(x, y) => {
+                    self.menu.hardware = true;
+                    let size = self.menu_size();
+                    Some(WindowEvent::CursorMoved {
+                        device_id: DeviceId::dummy(),
+                        position: winit::dpi::PhysicalPosition::new(
+                            (self.menu.pointer.0 + f64::from(x)).clamp(0.0, f64::from(size[0])),
+                            (self.menu.pointer.1 + f64::from(y)).clamp(0.0, f64::from(size[1])),
+                        ),
+                    })
+                }
+                Event::Button(button, down) => {
+                    if down {
+                        self.menu.hardware = true;
+                    }
+                    Some(WindowEvent::MouseInput {
+                        device_id: DeviceId::dummy(),
+                        state: if down {
+                            ElementState::Pressed
+                        } else {
+                            ElementState::Released
+                        },
+                        button: match button {
+                            0 => MouseButton::Left,
+                            1 => MouseButton::Right,
+                            _ => MouseButton::Middle,
+                        },
+                    })
+                }
+                Event::Scroll(x, y) => {
+                    self.menu.hardware = true;
+                    Some(WindowEvent::MouseWheel {
+                        device_id: DeviceId::dummy(),
+                        delta: MouseScrollDelta::LineDelta(x, y),
+                        phase: TouchPhase::Moved,
+                    })
+                }
+            };
+            if let Some(event) = window_event
+                && let Err(error) = self.menu_event(event_loop, event)
+            {
+                self.error = Some(error);
+            }
+        }
+        scene::lock_pointer(self.menu.hardware);
     }
 
     pub(super) fn draw_menu(&mut self, batch: &mut HudBatch) {
@@ -650,6 +787,10 @@ impl Loading {
                 self.menu.cursor,
                 self.settings.file.bool("hideSplashTexts"),
             );
+        }
+        #[cfg(target_os = "ios")]
+        if self.menu.hardware {
+            super::touch::draw_pointer(batch, &gui.atlas, self.menu.cursor);
         }
     }
 

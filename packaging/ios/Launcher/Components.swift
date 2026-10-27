@@ -157,11 +157,11 @@ extension View {
     }
 
     /// A page's width and margins, as the home screen has them.
-    func pageColumn() -> some View {
+    func pageColumn(maxWidth: CGFloat = 520) -> some View {
         padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 28)
-            .frame(maxWidth: 520)
+            .frame(maxWidth: maxWidth)
             .frame(maxWidth: .infinity)
     }
 }

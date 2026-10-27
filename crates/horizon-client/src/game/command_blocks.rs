@@ -2,6 +2,7 @@
 //! tick (`execute`, `executeChain`), `BaseCommandBlock.performCommand`
 //! through the command system with the block's output, and
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
+use super::keyboard::KeyEvent;
 use super::{Game, Screen, commands::execute::Source};
 use horizon_client::{
     command_block::{self, CommandBlock, Mode},
@@ -18,7 +19,7 @@ use horizon_world::{
     registry::{BlockRegistry, BlockStateId},
 };
 use winit::{
-    event::{ElementState, KeyEvent},
+    event::ElementState,
     keyboard::{KeyCode, PhysicalKey},
 };
 

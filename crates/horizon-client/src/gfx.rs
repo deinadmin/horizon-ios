@@ -2154,15 +2154,27 @@ impl Renderer {
             )
         });
         let sorted_indices = arena::Arena::indices(&device, 1 << 16, flat.is_some());
+        // Some Metal adapters (including the iOS simulator) cannot execute indirect draws.
+        // Keep the direct per-section path and never request an unsupported buffer usage.
+        let indirect_supported = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION);
+        let indirect_usage = if indirect_supported {
+            wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST
+        } else {
+            wgpu::BufferUsages::COPY_DST
+        };
         let indirect = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Section draws"),
             size: 1024 * 20,
-            usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+            usage: indirect_usage,
             mapped_at_creation: false,
         });
-        let multi_draw = device
-            .features()
-            .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE);
+        let multi_draw = indirect_supported
+            && device
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE);
         // HORIZON_GPU_CULL=0 turns occlusion culling off, `all` culls every
         // frame however few its draws and little it hides, `shader` tests in
         // the shader as on Metal (A/B checks).

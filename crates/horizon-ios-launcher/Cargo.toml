@@ -13,3 +13,28 @@ log = "0.4"
 
 [lints]
 workspace = true
+
+[target.'cfg(target_os = "ios")'.dependencies.objc2]
+version = "0.5.2"
+
+[target.'cfg(target_os = "ios")'.dependencies.objc2-foundation]
+version = "0.2.2"
+features = ["NSNotification", "NSThread", "NSString", "NSSet"]
+
+[target.'cfg(target_os = "ios")'.dependencies.objc2-ui-kit]
+version = "0.2.2"
+features = ["UIApplication", "UIResponder", "UIScene", "UISceneSession", "UISceneOptions", "UIWindowScene", "UIWindow", "UIView", "UIViewController", "UITouch", "UIEvent"]
+
+[target.'cfg(target_os = "ios")'.dependencies.raw-window-handle]
+version = "0.6"
+
+[target.'cfg(target_os = "ios")'.dependencies.objc2-new]
+package = "objc2"
+version = "0.6.5"
+
+[target.'cfg(target_os = "ios")'.dependencies.block2]
+version = "0.6.2"
+
+[target.'cfg(target_os = "ios")'.dependencies.objc2-game-controller]
+version = "0.3.2"
+features = ["block2", "objc2-core-foundation"]

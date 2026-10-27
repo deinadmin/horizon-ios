@@ -42,7 +42,7 @@ private func present(attempts: Int) {
     host.modalPresentationStyle = .fullScreen
     host.modalTransitionStyle = .crossDissolve
     root.present(host, animated: false) {
-        turn(host.view.window?.windowScene, to: .portrait)
+        turn(host.view.window?.windowScene, to: launcherOrientations)
     }
 }
 
@@ -72,10 +72,17 @@ func gameViewController() -> UIViewController? {
     return top
 }
 
-/// The launcher stands upright, as the design does; the game under it is held sideways by its own view
-/// controller, which the phone turns back to when Play dismisses this one. GameInfo.plist allows both.
+/// Phones keep the compact portrait launcher; iPads follow the way the device is held.
+var launcherOrientations: UIInterfaceOrientationMask {
+    UIDevice.current.userInterfaceIdiom == .pad ? .all : .portrait
+}
+
+func launcherPresentationOrientation() -> UIInterfaceOrientation {
+    guard UIDevice.current.userInterfaceIdiom == .pad else { return .portrait }
+    return gameViewController()?.view.window?.windowScene?.interfaceOrientation ?? .portrait
+}
 private final class LauncherHostingController: UIHostingController<AnyView> {
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .portrait }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { launcherOrientations }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { launcherPresentationOrientation() }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }

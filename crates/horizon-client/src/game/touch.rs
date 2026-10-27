@@ -27,6 +27,7 @@ pub(super) struct TouchInput {
     fingers: Touches,
     /// A touch has been seen: the controls are drawn (from the start on iPhone and iPad).
     seen: bool,
+    hardware: bool,
     /// The finger that is the pointer over a menu.
     menu: Option<MenuFinger>,
     /// Clicks to release once a tick has passed: vanilla samples buttons once a tick, so a tap released in
@@ -85,8 +86,9 @@ impl Game<'_> {
     }
 
     /// The world is under the fingers, with no screen over it.
-    fn touch_playing(&self) -> bool {
+    pub(super) fn touch_playing(&self) -> bool {
         self.title.is_none()
+            && self.server_packs.prompt.is_none()
             && self.screen == Screen::Playing
             && self.sign_edit.is_none()
             && self.book.is_none()
@@ -96,13 +98,67 @@ impl Game<'_> {
     /// The controls are on screen: after a touch, from the start on iPhone and iPad, or with `HORIZON_TOUCH=1`
     /// (laying them out on a computer).
     fn touch_shown(&self) -> bool {
-        self.touch.seen
-            || cfg!(target_os = "ios")
-            || std::env::var_os("HORIZON_TOUCH").is_some_and(|v| v == "1")
+        !self.touch.hardware
+            && (self.touch.seen
+                || cfg!(target_os = "ios")
+                || std::env::var_os("HORIZON_TOUCH").is_some_and(|v| v == "1"))
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn touch_is_active(&self) -> bool {
+        !self.touch.hardware
+    }
+
+    /// Clear held actions before handing control to another input device.
+    fn release_input_mode(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        let out = self.touch.fingers.release_all();
+        self.touch_act(out, 1.0)?;
+        self.touch.late.clear();
+        if self.touch.menu.take().is_some_and(|finger| finger.pressed) {
+            self.touch_button(event_loop, false);
+        }
+        self.touch.holding = None;
+        self.keys.clear();
+        self.toggles = Default::default();
+        self.modifiers = Default::default();
+        self.physical_keys.clear();
+        self.left = false;
+        self.right = false;
+        self.stop_mining();
+        self.mouse.set_ignore_first_move();
+        Ok(())
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn hardware_input(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        if !self.touch.hardware {
+            self.release_input_mode(event_loop)?;
+            self.touch.hardware = true;
+        }
+        if self.touch_playing() && !self.captured {
+            self.capture(true);
+        }
+        self.last_input = Instant::now();
+        Ok(())
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn reset_ios_input(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        self.release_input_mode(event_loop)?;
+        self.touch.hardware = false;
+        self.capture(false);
+        Ok(())
     }
 
     /// winit's `WindowEvent::Touch`.
     pub(super) fn touch_event(&mut self, event_loop: &ActiveEventLoop, touch: Touch) -> Result<()> {
+        #[cfg(target_os = "ios")]
+        horizon_ios_launcher::input::discard();
+        if self.touch.hardware {
+            self.release_input_mode(event_loop)?;
+            self.touch.hardware = false;
+            self.capture(false);
+        }
         self.touch.seen = true;
         self.last_input = Instant::now();
         let Some(batch) = self.touch_batch() else {
@@ -580,5 +636,38 @@ fn glyph(
             }
         }
         Control::Hotbar(_) => {}
+    }
+}
+
+pub(super) fn draw_pointer(
+    batch: &mut HudBatch,
+    atlas: &horizon_client::hud::HudAtlas,
+    (x, y): (f32, f32),
+) {
+    // An arrow, outlined, pointing up-left at (x, y).
+    let (x, y) = (x.floor(), y.floor());
+    const ROWS: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 4, 2, 1];
+    for (i, &w) in ROWS.iter().enumerate() {
+        let row = y + i as f32;
+        batch.fill(
+            atlas,
+            x - 1.0,
+            row,
+            f32::from(w) + 2.0,
+            1.0,
+            rgba(0, 0, 0, 255),
+        );
+    }
+    batch.fill(atlas, x - 1.0, y + 10.0, 2.0, 1.0, rgba(0, 0, 0, 255));
+    for (i, &w) in ROWS.iter().enumerate().skip(1).take(8) {
+        let row = y + i as f32;
+        batch.fill(
+            atlas,
+            x,
+            row,
+            f32::from(w) - 1.0,
+            1.0,
+            rgba(255, 255, 255, 255),
+        );
     }
 }

@@ -17,7 +17,7 @@ final class Changelog: ObservableObject {
     @Published private(set) var failed: String?
     @Published private(set) var loading = false
 
-    static let repository = "heyskylo/horizon-ios"
+    static let repository = "deinadmin/horizon-ios"
     private static let api = URL(string: "https://api.github.com/repos/\(repository)/commits?sha=main&per_page=40")!
     private static var cache: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]

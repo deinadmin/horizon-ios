@@ -1034,33 +1034,11 @@ impl Game<'_> {
             self.draw_pad_focus(batch, focus);
             return;
         }
-        // An arrow, outlined, pointing up-left at (x, y).
-        let atlas = &self.gui.atlas;
-        let (x, y) = (x.floor(), y.floor());
-        const ROWS: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 4, 2, 1];
-        for (i, &w) in ROWS.iter().enumerate() {
-            let row = y + i as f32;
-            batch.fill(
-                atlas,
-                x - 1.0,
-                row,
-                f32::from(w) + 2.0,
-                1.0,
-                rgba(0, 0, 0, 255),
-            );
-        }
-        batch.fill(atlas, x - 1.0, y + 10.0, 2.0, 1.0, rgba(0, 0, 0, 255));
-        for (i, &w) in ROWS.iter().enumerate().skip(1).take(8) {
-            let row = y + i as f32;
-            batch.fill(
-                atlas,
-                x,
-                row,
-                f32::from(w) - 1.0,
-                1.0,
-                rgba(255, 255, 255, 255),
-            );
-        }
+        self.draw_menu_pointer(batch, (x, y));
+    }
+
+    pub(super) fn draw_menu_pointer(&self, batch: &mut HudBatch, (x, y): (f32, f32)) {
+        super::touch::draw_pointer(batch, &self.gui.atlas, (x, y));
     }
 
     /// The focus highlight, as vanilla's keyboard focus looks: buttons,

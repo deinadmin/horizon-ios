@@ -1,3 +1,51 @@
+## Startup and Play
+
+The app opens the launcher without downloading assets or loading the game. Play offers a download
+when game files are missing. Downloading and installing keeps the launcher open; press Play again
+when the files are ready. With files already installed, Play loads the game and dismisses the
+launcher only after the title screen is ready. A failed asset load returns to the launcher’s
+file-download flow without starting another download automatically.
+
+## Keyboard and mouse
+
+Using a mouse or hardware keyboard hides touch controls; touching the screen restores them.
+Mouse look locks and hides the system pointer during play, and menus draw a pixel cursor.
+For keyboards without Escape, use **Command + .**. The grave-accent and ISO non-US-backslash
+physical key usages are also Escape alternatives, covering the German **^/°** key variants.
+
+## Local build, sign and install CLI
+
+From the repository root on a Mac with Xcode, XcodeGen and Rust installed:
+
+```sh
+rustup target add aarch64-apple-ios
+python3 tools/ios.py
+```
+
+This builds the **game plus Swift launcher**, saves `dist/ios/Horizon-game-unsigned.ipa`,
+then asks whether to sign and install. Choose a device from the numbered list. Paired but
+currently disconnected devices are shown with their status; connect and unlock the selected
+device, trust the Mac, and enable Developer Mode before installation.
+
+Signing reads one `.p12` and one `.mobileprovision` from `cert/`. The password comes from
+`HORIZON_IOS_P12_PASSWORD`, a same-name `.rtf` containing just the password, or a hidden prompt.
+Credentials are imported into a temporary keychain which is deleted afterwards. The signed copy
+is saved as `dist/ios/Horizon-game-signed.ipa`; the unsigned app and IPA are preserved.
+The bundle ID always remains `dev.horizon.game`. Shared explicit profiles retain their original
+`application-identifier` entitlement, following the local tweaks signing workflow. Wildcard profiles
+expand to Horizon’s ID. A missing UDID match is reported but does not block the chosen cert pair;
+installation tests device acceptance. Expired profiles and mismatched certificates are rejected.
+
+```sh
+python3 tools/ios.py --unsigned-only       # build without the install prompt
+python3 tools/ios.py --skip-build          # package and install the existing build
+python3 tools/ios.py --skip-build --install --device DEVICE_UDID
+```
+
+`--output` changes the build/output folder; `--cert-dir` changes the credential folder.
+The IPA contains no Minecraft assets. Import your own prepared resources as described below.
+The CLI installs but does not launch the game or touch existing player data.
+
 # The iOS app shell: what Horizon's simulation says on an iPhone
 
 Three files and one crate make the app shell, and a fourth puts the game itself in a bundle beside it.
@@ -215,3 +263,17 @@ library: `Game` and `game::run()` live in the **bin** target (`crates/horizon-cl
 need for that detour anyway: `EventLoop::run_app` calls `UIApplicationMain` itself, so a Rust executable built
 by `cargo build --target aarch64-apple-ios` is a legitimate `Payload/Horizon.app/Horizon`, which is what
 `.github/workflows/ios.yml` now produces beside this shell.
+
+### iOS 27 scene lifecycle
+
+`GameInfo.plist` declares one scene using `HorizonSceneDelegate`. The Rust adapter in
+`crates/horizon-ios-launcher/src/scene.rs` registers it before winit enters UIKit, attaches
+both loading and gameplay windows to the scene, and forwards activation/background transitions
+to winit 0.30's application-notification handlers. This is required for builds linked with the
+iOS 27 SDK: without a scene manifest UIKit traps during startup in
+`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`.
+
+The iOS simulator GPU lacks indirect execution. Renderer startup checks that capability
+before allocating indirect buffers or enabling flat draws and GPU culling, and otherwise
+uses direct section draws. Startup and a background/foreground transition were verified on
+the iPadOS 27 simulator; device installation still requires your working signing credentials.

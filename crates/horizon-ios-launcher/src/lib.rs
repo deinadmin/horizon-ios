@@ -52,10 +52,9 @@ impl Drop for Request {
 
 static QUEUE: Mutex<VecDeque<Request>> = Mutex::new(VecDeque::new());
 
-/// The launcher, switched off for now: the game starts at its title screen as it did before the launcher, loads
-/// at once, and Quit Game quits. True brings it back.
+/// Bundled iOS builds open the launcher and wait for an explicit Play action.
 #[cfg(target_os = "ios")]
-const ENABLED: bool = false;
+const ENABLED: bool = true;
 
 /// Queue a request for the game's next frame.
 pub fn push(request: Request) {
@@ -109,7 +108,7 @@ pub fn waiting() -> bool {
 }
 
 /// Whether this bundle carries the launcher, which holds the game until it is started.
-fn bundled() -> bool {
+pub fn bundled() -> bool {
     #[cfg(target_os = "ios")]
     return ENABLED && ios::framework().is_some();
     #[cfg(not(target_os = "ios"))]
@@ -261,3 +260,12 @@ mod tests {
         assert_eq!(answers.len(), 2);
     }
 }
+
+#[cfg(target_os = "ios")]
+pub mod scene;
+
+#[cfg(target_os = "ios")]
+pub mod input;
+
+#[cfg(any(target_os = "ios", test))]
+mod escape_shortcut;

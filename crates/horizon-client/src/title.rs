@@ -864,7 +864,7 @@ impl Title {
                     }
                 }
                 let version = format!(
-                    "Horizon {} (iOS by @heyskylo)",
+                    "Horizon {} (iOS by @deinadmin)",
                     horizon_core::VANILLA_VERSION
                 );
                 batch.text(atlas, &version, 2.0, h - 10.0, u32::MAX, true);

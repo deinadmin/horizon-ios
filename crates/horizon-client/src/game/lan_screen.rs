@@ -5,6 +5,7 @@
 //! forcing the game mode. Its difficulty lock asks first (PopupScreen), and
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
+use super::keyboard::KeyEvent;
 use super::{
     Game, Screen,
     game_rules_screen::{Exit, RulesScreen},
@@ -18,7 +19,7 @@ use horizon_client::{
     ui::{self, EditBox},
 };
 use horizon_protocol::packets::play::{self, Serverbound as S};
-use winit::{event::KeyEvent, keyboard::PhysicalKey};
+use winit::keyboard::PhysicalKey;
 
 pub(super) struct WorldOptions {
     remote: bool,

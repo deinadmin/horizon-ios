@@ -134,7 +134,7 @@ final class PackStore: ObservableObject {
     }
 
     /// Modrinth asks every client to name itself.
-    private static let agent = "heyskylo/horizon-ios launcher (github.com/heyskylo/horizon-ios)"
+    private static let agent = "deinadmin/horizon-ios launcher (github.com/deinadmin/horizon-ios)"
 
     private static func get(_ url: URL) async -> Any? {
         var request = URLRequest(url: url)

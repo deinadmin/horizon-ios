@@ -1,5 +1,6 @@
 //! Chat, the command registries and the per-world state behind commands
 //! (game rules, the world clock, difficulty), bound to the game.
+use super::keyboard::KeyEvent;
 use super::{Game, Screen};
 use horizon_client::{
     chat::{Chat, ChatAction, ChatScreen, Commands, SYSTEM_INDICATOR},
@@ -22,10 +23,7 @@ fn chat_tree<'a>(
         None => mods.dispatcher(),
     }
 }
-use winit::{
-    event::KeyEvent,
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 /// The local player's name (offline single player).
 pub const PLAYER_NAME: &str = "Player";
