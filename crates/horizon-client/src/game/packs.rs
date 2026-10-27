@@ -94,7 +94,7 @@ pub(super) fn pack_infos(vanilla: &Path) -> Vec<PackInfo> {
     infos
 }
 impl Game<'_> {
-    fn vanilla_root(&self) -> PathBuf {
+    pub(super) fn vanilla_root(&self) -> PathBuf {
         if self.ui.vanilla_root.as_os_str().is_empty() {
             self.options.resources.clone()
         } else {

@@ -36,6 +36,7 @@ thread_local! { static DEVICES: RefCell<Devices> = RefCell::default(); }
 /// Install handlers for hot-plugged devices and drain their ordered events.
 pub fn take() -> Vec<Event> {
     assert!(objc2_foundation::MainThreadMarker::new().is_some());
+    crate::input_preferences::refresh();
     DEVICES.with(|devices| {
         let mut devices = devices.borrow_mut();
         // SAFETY: GameController objects and handlers use their documented signatures;
@@ -70,7 +71,11 @@ pub fn take() -> Vec<Event> {
                             let code = mut_shortcut
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .key(code as i32, down.as_bool(), command);
+                                .key(
+                                    code as i32,
+                                    down.as_bool(),
+                                    command && crate::input_preferences::escape_enabled(),
+                                );
                             push(Event::Key(code, down.as_bool()));
                         },
                     );

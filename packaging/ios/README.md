@@ -5,6 +5,19 @@ when game files are missing. Downloading and installing keeps the launcher open;
 when the files are ready. With files already installed, Play loads the game and dismisses the
 launcher only after the title screen is ready. A failed asset load returns to the launcher’s
 file-download flow without starting another download automatically.
+Quit Game stops the running game and audio, drops its renderer, and returns to an idle launcher.
+Pressing Play then starts a fresh resource load instead of uncovering the previous game.
+
+## Native Game Mode and Home gesture
+
+The game bundle declares the Games category and both Apple's current and legacy Game Mode
+support keys. iOS/iPadOS controls Game Mode activation and the user's choice takes precedence;
+there is no per-screen force-enable call. On supported systems this makes Horizon eligible
+for native Game Mode's scheduling and latency optimizations.
+
+After Play, the game controller defers bottom-edge system gestures so an accidental swipe
+does not immediately go Home. Quit Game clears this preference, and the SwiftUI launcher
+uses normal system gestures. The home indicator remains under UIKit's normal control.
 
 ## Keyboard and mouse
 
@@ -12,6 +25,9 @@ Using a mouse or hardware keyboard hides touch controls; touching the screen res
 Mouse look locks and hides the system pointer during play, and menus draw a pixel cursor.
 For keyboards without Escape, use **Command + .**. The grave-accent and ISO non-US-backslash
 physical key usages are also Escape alternatives, covering the German **^/°** key variants.
+Settings → Keyboard & Mouse can turn these alternatives off and adjust pixel-cursor speed
+from 0.5× to 6× (default 2×). Cursor speed is separate from camera Look Sensitivity.
+Both preferences persist in the app's UserDefaults.
 
 ## Local build, sign and install CLI
 

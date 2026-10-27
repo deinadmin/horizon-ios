@@ -107,7 +107,7 @@ struct SettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            PageTitle(title: "Settings", subtitle: "Saved to the game's options.txt, and applied at once while it runs.")
+            PageTitle(title: "Settings", subtitle: "Your preferences are saved on this device.")
             if link.canList {
                 ForEach(GameOptions.groups, id: \.title) { group in
                     SectionHeader(title: group.title) {
@@ -134,6 +134,8 @@ struct SettingsPage: View {
             } else {
                 EmptyNote(icon: "hourglass", text: "The game's settings show here in a moment.")
             }
+
+            KeyboardControlsSection()
 
             SectionHeader(title: "Game files")
             GameFilesCard(download: download, missing: !GameFolder.hasGameFiles)
@@ -273,6 +275,45 @@ private struct About: View {
             Text(title).font(Theme.sans(13)).foregroundStyle(Theme.textMuted)
             Spacer()
             Text(value).font(Theme.mono(11)).foregroundStyle(Theme.text)
+        }
+    }
+}
+
+
+/// Local iOS input preferences, also read by the Rust native-input bridge.
+private struct KeyboardControlsSection: View {
+    @AppStorage("horizon.escapeAlternative") private var escapeAlternative = true
+    @AppStorage("horizon.cursorSensitivity") private var cursorSensitivity = 2.0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Keyboard & Mouse") {
+                Image(systemName: "keyboard").foregroundStyle(Theme.textFaint)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Escape alternative", isOn: $escapeAlternative)
+                    .font(Theme.sans(14))
+                    .foregroundStyle(Theme.text)
+                    .tint(Theme.accent)
+                Text("Use ^/° or Command + . as Escape on keyboards without an Esc key.")
+                    .font(Theme.sans(12))
+                    .foregroundStyle(Theme.textMuted)
+                Divider().overlay(Theme.border)
+                HStack {
+                    Text("Mouse cursor sensitivity").font(Theme.sans(14)).foregroundStyle(Theme.text)
+                    Spacer()
+                    Text(String(format: "%.2g×", cursorSensitivity))
+                        .font(Theme.mono(11)).foregroundStyle(Theme.accentText)
+                }
+                Slider(value: $cursorSensitivity, in: 0.5...6, step: 0.25)
+                    .tint(Theme.accent)
+                    .accessibilityLabel("Mouse cursor sensitivity")
+                    .accessibilityValue(String(format: "%.2g times", cursorSensitivity))
+                Text("Changes the pixel cursor speed in game menus. Camera speed uses Look Sensitivity.")
+                    .font(Theme.sans(12)).foregroundStyle(Theme.textMuted)
+            }
+            .padding(14)
+            .card()
         }
     }
 }

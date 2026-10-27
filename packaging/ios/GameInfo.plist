@@ -43,6 +43,13 @@
 	<string></string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Game Mode eligibility is app-wide; iOS controls activation and honors the user's choice. -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>LSSupportsGameMode</key>
+	<true/>
+	<key>GCSupportsGameMode</key>
+	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MinimumOSVersion</key>

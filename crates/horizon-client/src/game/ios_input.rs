@@ -62,7 +62,10 @@ impl Game<'_> {
                 if self.touch_is_active() {
                     return Ok(());
                 }
-                let Some(key) = keybinds::ios_key_code(code) else {
+                let Some(key) = keybinds::ios_key_code(
+                    code,
+                    horizon_ios_launcher::input_preferences::escape_enabled(),
+                ) else {
                     return Ok(());
                 };
                 if down {
@@ -92,8 +95,10 @@ impl Game<'_> {
                         .on_move(0.0, 0.0, f64::from(x), f64::from(y), true, true);
                 } else if let Some(r) = &self.renderer {
                     let b = horizon_client::hud::HudBatch::new([r.config.width, r.config.height]);
-                    let x = (self.cursor.0 * b.scale + x).clamp(0.0, r.config.width as f32);
-                    let y = (self.cursor.1 * b.scale + y).clamp(0.0, r.config.height as f32);
+                    let speed = horizon_ios_launcher::input_preferences::cursor_speed();
+                    let x = (self.cursor.0 * b.scale + x * speed).clamp(0.0, r.config.width as f32);
+                    let y =
+                        (self.cursor.1 * b.scale + y * speed).clamp(0.0, r.config.height as f32);
                     self.window_event(
                         event_loop,
                         id,

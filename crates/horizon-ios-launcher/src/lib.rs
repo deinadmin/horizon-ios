@@ -96,6 +96,8 @@ pub fn wait_for_start() -> bool {
 
 /// Let the game start loading (the launcher's `launcher-start`, or a launcher that could not be shown).
 pub fn start() {
+    #[cfg(target_os = "ios")]
+    scene::set_game_running(true);
     let (started, signal) = &STARTED;
     *started.lock().unwrap_or_else(PoisonError::into_inner) = Some(true);
     signal.notify_all();
@@ -269,3 +271,27 @@ pub mod input;
 
 #[cfg(any(target_os = "ios", test))]
 mod escape_shortcut;
+
+/// Ask the application owner to drop the game before presenting the launcher.
+static QUIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn request_quit() -> bool {
+    if !bundled() {
+        return false;
+    }
+    QUIT_REQUESTED.store(true, std::sync::atomic::Ordering::Release);
+    true
+}
+
+pub fn take_quit_request() -> bool {
+    QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+/// Close the startup gate after the previous loader/game has been torn down.
+pub fn reset_start() {
+    #[cfg(target_os = "ios")]
+    scene::set_game_running(false);
+    *STARTED.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(false);
+}
+
+pub mod input_preferences;

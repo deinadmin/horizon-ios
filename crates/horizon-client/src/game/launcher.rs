@@ -311,6 +311,12 @@ impl Loading {
             let command = request.line.split_whitespace().next().unwrap_or_default();
             match command {
                 "launcher-start" => {
+                    if self.handle.is_none()
+                        && let Err(error) = self.start_after_quit()
+                    {
+                        request.answer(&json!({"error": error.to_string()}).to_string());
+                        continue;
+                    }
                     if let Some(options) = &mut self.options
                         && let Some(root) = horizon_client::import::resources_root(
                             &options.resources,
@@ -381,6 +387,123 @@ impl Loading {
         if deliver() && self.importing() {
             self.files_arrived()?;
         }
+        Ok(())
+    }
+}
+
+impl super::App {
+    /// Keep UIKit's window, but drop the game, GPU resources, audio stream and
+    /// workers. Play constructs a new loader and Game, just like a cold start.
+    pub(super) fn quit_to_launcher(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        use super::*;
+        let (window, mut options, settings, vanilla_root) = match self {
+            App::Ready(game) => {
+                // A save failure must leave the live game intact.
+                game.save_for_exit()?;
+                game.audio.stop_all();
+                if let Some(worker) = game.rest_loader.take() {
+                    let _ = worker.finish();
+                }
+                game.capture(false);
+                game.pad_close_output();
+                game.finish_perf();
+                (
+                    game.window.clone(),
+                    game.options.clone(),
+                    game.settings.clone(),
+                    game.vanilla_root(),
+                )
+            }
+            App::Loading(loading) => {
+                if let Some(handle) = loading.handle.take() {
+                    let _ = handle.join();
+                }
+                let mut bundles = Vec::new();
+                if let Some(Ok(bundle)) = loading.loaded.take() {
+                    bundles.push(bundle);
+                }
+                for message in loading.receiver.try_iter() {
+                    if let LoaderMsg::Done(Ok(bundle)) = message {
+                        bundles.push(bundle);
+                    }
+                }
+                for mut bundle in bundles {
+                    if let Some(worker) = bundle.rest_loader.take() {
+                        let _ = worker.finish();
+                    }
+                }
+                (
+                    loading.window.clone(),
+                    loading.options.clone().ok_or("missing launch options")?,
+                    loading.settings.clone(),
+                    loading.vanilla_root.clone(),
+                )
+            }
+        };
+        options.world = None;
+        options.server = None;
+        let menu = startup_menu::StartupMenu::new(&options, None)?;
+        let (_, receiver) = mpsc::channel();
+        let idle = Loading {
+            window,
+            renderer: None,
+            gui: None,
+            settings,
+            fullscreen: horizon_client::window::FullscreenState::new(false),
+            options: Some(options),
+            vanilla_root,
+            pack_error: None,
+            started: Instant::now(),
+            panorama_rotation: Default::default(),
+            progress: Progress::new(),
+            receiver,
+            loaded: None,
+            handle: None,
+            shown: false,
+            menu,
+            import: None,
+            brand: Default::default(),
+            error: None,
+        };
+        *self = App::Loading(Box::new(idle));
+        horizon_ios_launcher::reset_start();
+        #[cfg(target_os = "ios")]
+        {
+            horizon_ios_launcher::input::discard();
+            horizon_ios_launcher::scene::lock_pointer(false);
+        }
+        log::info!("Horizon: game stopped; launcher idle until Play");
+        if !horizon_ios_launcher::show() {
+            event_loop.exit();
+        }
+        Ok(())
+    }
+}
+
+impl Loading {
+    fn start_after_quit(&mut self) -> Result<()> {
+        use super::*;
+        let options = self.options.as_ref().ok_or("missing launch options")?;
+        let window = self.window.clone().ok_or("window closed")?;
+        self.started = Instant::now();
+        self.progress = Progress::new();
+        self.renderer = Some(loading_renderer(
+            window,
+            options.offscreen,
+            None,
+            None,
+            self.settings.horizon.api,
+        )?);
+        let (receiver, handle) = startup_menu::spawn_loader(
+            options,
+            &self.settings,
+            &self.vanilla_root,
+            self.started,
+            &self.progress,
+        )?;
+        self.receiver = receiver;
+        self.handle = Some(handle);
+        log::info!("Horizon: Play started a fresh resource loader");
         Ok(())
     }
 }

@@ -130,6 +130,34 @@ extern "C" fn prefers_lock(
     objc2::runtime::Bool::new(POINTER_LOCK.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+// Independent of pointer lock: touch players need bottom-edge protection too.
+static GAME_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+extern "C" fn deferred_edges(
+    _: &objc2::runtime::AnyObject,
+    _: objc2::runtime::Sel,
+) -> objc2_ui_kit::UIRectEdge {
+    if GAME_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+        objc2_ui_kit::UIRectEdge::Bottom
+    } else {
+        objc2_ui_kit::UIRectEdge::None
+    }
+}
+
+/// Request the system's two-swipe Home gesture only during a game session.
+/// Full-screen launcher controllers keep UIKit's default (no deferred edges).
+pub fn set_game_running(running: bool) {
+    assert!(MainThreadMarker::new().is_some());
+    if GAME_RUNNING.swap(running, std::sync::atomic::Ordering::Relaxed) == running {
+        return;
+    }
+    WINDOW.with(|w| {
+        if let Some(controller) = w.borrow().as_ref().and_then(|w| w.rootViewController()) {
+            controller.setNeedsUpdateOfScreenEdgesDeferringSystemGestures();
+        }
+    });
+}
+
 pub fn game_active() -> bool {
     WINDOW.with(|w| {
         w.borrow()
@@ -196,6 +224,10 @@ fn install_input_adapter(view: &UIView) {
             builder.add_method(
                 sel!(prefersPointerLocked),
                 prefers_lock as extern "C" fn(_, _) -> objc2::runtime::Bool,
+            );
+            builder.add_method(
+                sel!(preferredScreenEdgesDeferringSystemGestures),
+                deferred_edges as extern "C" fn(_, _) -> objc2_ui_kit::UIRectEdge,
             );
         }
         builder.register()

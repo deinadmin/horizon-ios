@@ -436,9 +436,9 @@ impl Loading {
 
     fn menu_action(&mut self, event_loop: &ActiveEventLoop, action: Action) {
         match action {
-            // iPhone and iPad: an app does not quit itself; Quit Game goes back to the launcher.
+            // The application owner tears down the game before returning to the iOS launcher.
             Action::Quit => {
-                if !horizon_ios_launcher::show() {
+                if !horizon_ios_launcher::request_quit() {
                     event_loop.exit();
                 }
             }
@@ -686,7 +686,10 @@ impl Loading {
                     if down {
                         self.menu.hardware = true;
                     }
-                    if let Some(key) = horizon_client::keybinds::ios_key_code(code) {
+                    if let Some(key) = horizon_client::keybinds::ios_key_code(
+                        code,
+                        horizon_ios_launcher::input_preferences::escape_enabled(),
+                    ) {
                         if down {
                             self.menu.physical_keys.insert(key);
                             self.menu_key(KeyEvent {
@@ -707,11 +710,14 @@ impl Loading {
                 Event::Motion(x, y) => {
                     self.menu.hardware = true;
                     let size = self.menu_size();
+                    let speed = horizon_ios_launcher::input_preferences::cursor_speed();
                     Some(WindowEvent::CursorMoved {
                         device_id: DeviceId::dummy(),
                         position: winit::dpi::PhysicalPosition::new(
-                            (self.menu.pointer.0 + f64::from(x)).clamp(0.0, f64::from(size[0])),
-                            (self.menu.pointer.1 + f64::from(y)).clamp(0.0, f64::from(size[1])),
+                            (self.menu.pointer.0 + f64::from(x * speed))
+                                .clamp(0.0, f64::from(size[0])),
+                            (self.menu.pointer.1 + f64::from(y * speed))
+                                .clamp(0.0, f64::from(size[1])),
                         ),
                     })
                 }

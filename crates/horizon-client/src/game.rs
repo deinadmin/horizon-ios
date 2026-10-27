@@ -11192,9 +11192,9 @@ impl ApplicationHandler for Game<'_> {
                         self.audio.play_button_click();
                     }
                     match action {
-                        // iPhone and iPad: an app does not quit itself; Quit Game goes back to the launcher.
+                        // The application owner tears down the game before returning to the iOS launcher.
                         Action::Quit => {
-                            if !horizon_ios_launcher::show() {
+                            if !horizon_ios_launcher::request_quit() {
                                 event_loop.exit();
                             }
                         }
@@ -13019,6 +13019,15 @@ impl Loading {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.handle.is_none() && horizon_ios_launcher::waiting() {
+            if let Err(error) = self.poll_launcher() {
+                self.error = Some(error);
+            }
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + Duration::from_millis(50),
+            ));
+            return;
+        }
         #[cfg(target_os = "ios")]
         self.ios_menu_input(event_loop);
         if let Err(error) = if self.importing() {
@@ -13182,6 +13191,12 @@ impl ApplicationHandler for App {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if horizon_ios_launcher::take_quit_request() {
+            if let Err(error) = self.quit_to_launcher(event_loop) {
+                log::error!("Horizon: could not quit to launcher: {error}");
+            }
+            return;
+        }
         enum Step {
             Waiting,
             Ready(Box<Game<'static>>),
